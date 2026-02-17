@@ -7,8 +7,9 @@ import pandas as pd
 from dataclasses import dataclass
 import plotly.express as px
 import plotly.graph_objects as go
-import matplotlib.pyplot as plt
 import os
+import warnings
+warnings.filterwarnings('ignore')
 
 # ============================
 # KONFIGURASI SIMULASI
@@ -221,66 +222,7 @@ class PiketKantinDES:
         return utilization
 
 # ============================
-# FUNGSI VISUALISASI MATPLOTLIB (Untuk Jupyter)
-# ============================
-def create_matplotlib_charts(df, results):
-    """Buat visualisasi dengan matplotlib - sama seperti di Jupyter Notebook"""
-    
-    # Set style
-    plt.style.use('seaborn-v0_8-darkgrid')
-    plt.rcParams['figure.facecolor'] = '#1E293B'
-    plt.rcParams['axes.facecolor'] = '#334155'
-    plt.rcParams['axes.edgecolor'] = '#475569'
-    plt.rcParams['axes.labelcolor'] = '#F1F5F9'
-    plt.rcParams['xtick.color'] = '#94A3B8'
-    plt.rcParams['ytick.color'] = '#94A3B8'
-    plt.rcParams['text.color'] = '#F1F5F9'
-    
-    # Buat figure 2x2
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-    fig.suptitle('Hasil Simulasi Piket Kantin IT Del', 
-                 fontsize=16, fontweight='bold', color='#F1F5F9', y=1.02)
-    
-    colors = {'lauk': '#3B82F6', 'angkut': '#F97316', 'nasi': '#10B981'}
-    
-    # Chart 1: Distribusi Waktu
-    axes[0, 0].hist(df['waktu_lauk'], bins=20, alpha=0.7, label='Lauk', 
-                    edgecolor='white', linewidth=0.5, color=colors['lauk'])
-    axes[0, 0].hist(df['waktu_angkut'], bins=20, alpha=0.7, label='Angkut',
-                    edgecolor='white', linewidth=0.5, color=colors['angkut'])
-    axes[0, 0].hist(df['waktu_nasi'], bins=20, alpha=0.7, label='Nasi',
-                    edgecolor='white', linewidth=0.5, color=colors['nasi'])
-    axes[0, 0].set_title('Distribusi Waktu per Stage', fontsize=12, fontweight='bold')
-    axes[0, 0].legend()
-    axes[0, 0].grid(True, alpha=0.3)
-    
-    # Chart 2: Timeline
-    axes[0, 1].scatter(df.index, df['waktu_selesai'], s=10, alpha=0.6, c='green')
-    axes[0, 1].set_title('Timeline Penyelesaian Ompreng', fontsize=12, fontweight='bold')
-    axes[0, 1].grid(True, alpha=0.3)
-    
-    # Chart 3: Utilisasi
-    stages = list(results['utilisasi_petugas'].keys())
-    utils = list(results['utilisasi_petugas'].values())
-    stage_labels = ['Stage 1\n(Lauk)', 'Stage 2\n(Angkut)', 'Stage 3\n(Nasi)']
-    axes[1, 0].bar(stage_labels, utils, color=[colors['lauk'], colors['angkut'], colors['nasi']])
-    axes[1, 0].axhline(y=80, color='red', linestyle='--', label='Target 80%')
-    axes[1, 0].set_title('Utilisasi Petugas per Stage', fontsize=12, fontweight='bold')
-    axes[1, 0].legend()
-    axes[1, 0].grid(True, alpha=0.3, axis='y')
-    
-    # Chart 4: Pie Chart
-    total_times = [results['total_lauk_time'], results['total_angkut_time'], results['total_nasi_time']]
-    axes[1, 1].pie(total_times, labels=['Lauk', 'Angkut', 'Nasi'], autopct='%1.1f%%',
-                   colors=[colors['lauk'], colors['angkut'], colors['nasi']],
-                   explode=(0.05, 0.05, 0.05))
-    axes[1, 1].set_title('Proporsi Total Waktu per Stage', fontsize=12, fontweight='bold')
-    
-    plt.tight_layout()
-    return fig
-
-# ============================
-# FUNGSI VISUALISASI PLOTLY (Untuk Streamlit)
+# FUNGSI VISUALISASI PLOTLY
 # ============================
 def create_stage_time_distribution(df):
     fig = px.histogram(df, x='waktu_lauk', nbins=20, title='Distribusi Waktu per Stage',
@@ -338,11 +280,47 @@ def create_total_time_breakdown(results):
         plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
     return fig
 
+def create_efficiency_gauge(results):
+    avg_util = np.mean(list(results['utilisasi_petugas'].values()))
+    
+    if avg_util >= 80:
+        color = "#10B981"
+        status = "Optimal"
+    elif avg_util >= 60:
+        color = "#F97316"
+        status = "Cukup"
+    else:
+        color = "#EF4444"
+        status = "Perlu Perbaikan"
+    
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=avg_util,
+        title={'text': f"Efisiensi Sistem<br><span style='font-size:14px'>{status}</span>"},
+        delta={'reference': 80},
+        gauge={
+            'axis': {'range': [0, 100]},
+            'bar': {'color': color},
+            'steps': [
+                {'range': [0, 60], 'color': 'rgba(239, 68, 68, 0.3)'},
+                {'range': [60, 80], 'color': 'rgba(249, 115, 22, 0.3)'},
+                {'range': [80, 100], 'color': 'rgba(16, 185, 129, 0.3)'}
+            ],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.75,
+                'value': 80
+            }
+        }
+    ))
+    fig.update_layout(height=300)
+    return fig
+
 # ============================
 # APLIKASI STREAMLIT
 # ============================
 st.set_page_config(
-    page_title="Simulasi Piket Kantin IT Del",
+    page_title="Simulasi Piket Kantin IT Del - ifs25026",
     page_icon="🍽️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -361,12 +339,61 @@ st.markdown("""
         font-weight: bold;
         color: #10B981;
     }
+    [data-testid="stMetricLabel"] {
+        font-size: 14px;
+        color: #94A3B8;
+    }
+    .stButton>button {
+        background: linear-gradient(90deg, #EF4444 0%, #F97316 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 24px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #1E293B 0%, #334155 100%);
+        border-radius: 12px;
+        padding: 20px;
+        margin: 10px 0;
+        border: 1px solid #475569;
+    }
+    .main-header {
+        font-size: 32px;
+        font-weight: bold;
+        background: linear-gradient(90deg, #EF4444, #F97316);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 10px;
+    }
+    .sub-header {
+        font-size: 18px;
+        color: #94A3B8;
+        margin-bottom: 20px;
+    }
+    .footer {
+        text-align: center;
+        padding: 20px;
+        color: #64748B;
+        font-size: 12px;
+        border-top: 1px solid #334155;
+        margin-top: 40px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # HEADER
-st.title("🍽️ Simulasi Piket Kantin IT Del")
-st.markdown("**Discrete Event System (DES) - Studi Kasus 2.1**")
+col_logo, col_title = st.columns([1, 4])
+with col_logo:
+    st.markdown("## 🍽️")
+with col_title:
+    st.markdown('<p class="main-header">Simulasi Piket Kantin IT Del</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Discrete Event System (DES) - Studi Kasus 2.1 | ifs25026</p>', unsafe_allow_html=True)
 st.markdown("---")
 
 # SIDEBAR
@@ -486,29 +513,41 @@ if st.session_state.results is not None:
         fig_breakdown = create_total_time_breakdown(results)
         st.plotly_chart(fig_breakdown, use_container_width=True)
     
-    # Visualisasi dengan Matplotlib (opsional - untuk perbandingan)
-    st.markdown("---")
-    st.subheader("📈 Visualisasi Matplotlib (Alternatif)")
+    # Gauge Efficiency
+    col5, col6 = st.columns([2, 1])
+    with col5:
+        st.markdown("**📄 Data Hasil Simulasi**")
+        with st.expander("Lihat Data"):
+            st.dataframe(df.sort_values('id'), use_container_width=True)
+            
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(label="📥 Download CSV", data=csv,
+                file_name=f"simulasi_piket_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv")
+    with col6:
+        st.markdown("**Efisiensi Sistem**")
+        fig_gauge = create_efficiency_gauge(results)
+        st.plotly_chart(fig_gauge, use_container_width=True)
     
-    with st.expander("Lihat Visualisasi Matplotlib"):
-        # PERBAIKAN: df dan results sudah didefinisikan di atas
-        fig_matplotlib = create_matplotlib_charts(df, results)
-        st.pyplot(fig_matplotlib)
-    
-    # Data tabel
+    # Rekomendasi
     st.markdown("---")
-    st.subheader("📄 Data Hasil Simulasi")
-    with st.expander("Lihat Data"):
-        st.dataframe(df.sort_values('id'), use_container_width=True)
-        
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(label="📥 Download CSV", data=csv,
-            file_name=f"simulasi_piket_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv")
+    st.subheader("💡 Rekomendasi")
+    avg_util = np.mean(list(results['utilisasi_petugas'].values()))
+    max_util_stage = max(results['utilisasi_petugas'], key=results['utilisasi_petugas'].get)
+    
+    if avg_util > 80:
+        st.warning("⚠️ **Utilisasi tinggi!** Pertimbangkan menambah petugas.")
+    elif avg_util < 50:
+        st.info("ℹ️ **Utilisasi rendah.** Sistem memiliki kapasitas berlebih.")
+    else:
+        st.success("✅ **Utilisasi optimal.** Sistem berjalan dengan baik.")
+    
+    stage_names = {'lauk': 'Stage 1 (Lauk)', 'angkut': 'Stage 2 (Angkut)', 'nasi': 'Stage 3 (Nasi)'}
+    st.write(f"**Stage dengan utilisasi tertinggi:** {stage_names[max_util_stage]} ({results['utilisasi_petugas'][max_util_stage]:.1f}%)")
 
 else:
     st.info("👈 Klik tombol **Jalankan Simulasi** di sidebar untuk memulai")
 
 # FOOTER
 st.markdown("---")
-st.caption(f"**MODSIM: Discrete Event System** | Terakhir diupdate: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+st.caption(f"**MODSIM: Discrete Event System** | ifs25026 | Terakhir diupdate: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
